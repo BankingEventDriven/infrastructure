@@ -1,0 +1,114 @@
+name: banking-event-driven-system
+
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: banking-event-driven-postgres
+    environment:
+      POSTGRES_DB: banking
+      POSTGRES_USER: banking_user
+      POSTGRES_PASSWORD: banking_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking_user -d banking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak-db:
+    image: postgres:15
+    container_name: banking-event-driven-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak_user
+      POSTGRES_PASSWORD: keycloak_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - keycloak-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak_user -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: banking-event-driven-keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_PORT: 5432
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: keycloak_pass
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8084:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+
+  pulsar:
+    image: apachepulsar/pulsar:latest
+    container_name: banking-event-driven-pulsar
+    command: bin/pulsar standalone
+    ports:
+      - "6650:6650"
+      - "8085:8080"
+
+  pulsar-manager:
+    image: apachepulsar/pulsar-manager:latest
+    container_name: banking-event-driven-pulsar-manager
+    ports:
+      - "9527:9527"
+      - "7750:7750"
+    environment:
+      SPRING_CONFIGURATION_FILE: /pulsar-manager/pulsar-manager/application.properties
+    command: /bin/bash -c "bin/pulsar-manager"
+    depends_on:
+      pulsar:
+        condition: service_started
+
+#  account-service:
+#    build: ../account-service
+#    container_name: banking-event-driven-account-service
+#    ports:
+#      - "8081:8081"
+#    environment:
+#      SERVER_PORT: 8081
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banking
+#      SPRING_DATASOURCE_USERNAME: banking_user
+#      SPRING_DATASOURCE_PASSWORD: banking_pass
+#      SPRING_PULSAR_CLIENT_SERVICE_URL: pulsar://pulsar:6650
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#      pulsar:
+#        condition: service_started
+
+#  transaction-service:
+#    build: ../transaction-service
+#    container_name: banking-event-driven-transaction-service
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#      pulsar:
+#        condition: service_started
+#
+#  api-gateway:
+#    build: ../api-gateway
+#    container_name: banking-event-driven-api-gateway
+#    ports:
+#      - "8081:8081"
+
+volumes:
+  postgres-data:
+  keycloak-postgres-data:
